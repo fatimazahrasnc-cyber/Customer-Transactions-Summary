@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Customer Transactions Report</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:#0d1117; color:#e6edf3; min-height:100vh; padding:20px; }
+
+  /* ---- control bar (from skeleton) ---- */
+  .ctrl-bar {
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    padding:12px 16px; margin-bottom:18px;
+    background:#161b22; border:1px solid #30363d; border-radius:10px;
+  }
+  .load-btn {
+    padding:8px 20px; border:none; border-radius:7px; cursor:pointer;
+    font-size:13px; font-weight:700; background:#58a6ff; color:#fff; transition:opacity .15s;
+  }
+  .load-btn:disabled { opacity:.45; cursor:not-allowed; }
+  .prog-wrap { flex:1; min-width:100px; height:5px; background:#30363d; border-radius:3px; overflow:hidden; }
+  .prog-bar  { height:100%; width:0%; background:#58a6ff; border-radius:3px; transition:width .25s; }
+  .status-txt { font-size:12px; color:#8b949e; white-space:nowrap; }
+  .err-box { color:#f85149; background:#161b22; border:1px solid #30363d; border-radius:8px; padding:12px 16px; font-size:13px; margin-bottom:16px; }
+
+  /* ---- headings ---- */
+  h1 { font-size:20px; font-weight:800; margin-bottom:4px; }
+  .subtitle { font-size:13px; color:#8b949e; margin-bottom:18px; }
+
+  /* ---- summary cards ---- */
+  .summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:20px; }
+  .card { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:16px 18px; }
+  .card .label { font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#8b949e; margin-bottom:6px; }
+  .card .value { font-size:22px; font-weight:800; }
+  .card .value.owe { color:#e3b341; }
+  .card .value.pos { color:#3fb950; }
+
+  /* ---- toolbar ---- */
+  .toolbar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
+  .search { flex:1; min-width:200px; padding:9px 13px; background:#161b22; border:1px solid #30363d;
+            border-radius:8px; color:#e6edf3; font-size:13px; }
+  .search:focus { outline:none; border-color:#58a6ff; }
+  .src-note { font-size:11px; color:#8b949e; }
+
+  /* ---- customer accordion ---- */
+  .cust { background:#161b22; border:1px solid #30363d; border-radius:10px; margin-bottom:10px; overflow:hidden; }
+  .cust-head { display:flex; align-items:center; gap:14px; padding:14px 18px; cursor:pointer; user-select:none; }
+  .cust-head:hover { background:#1b222b; }
+  .chev { font-size:11px; color:#8b949e; transition:transform .2s; flex-shrink:0; }
+  .cust.open .chev { transform:rotate(90deg); }
+  .cust-name { font-weight:700; font-size:15px; }
+  .cust-code { font-size:11px; color:#8b949e; margin-left:6px; }
+  .cust-spacer { flex:1; }
+  .cust-meta { font-size:11px; color:#8b949e; text-align:right; }
+  .bal-badge { font-size:14px; font-weight:800; padding:4px 12px; border-radius:20px; white-space:nowrap; }
+  .bal-owe { background:rgba(227,179,65,.15); color:#e3b341; }
+  .bal-zero { background:rgba(63,185,80,.15); color:#3fb950; }
+  .bal-credit { background:rgba(88,166,255,.15); color:#58a6ff; }
+
+  .cust-body { display:none; padding:0 18px 18px; border-top:1px solid #30363d; }
+  .cust.open .cust-body { display:block; }
+
+  .detail-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px 22px; padding:16px 0; }
+  .detail-grid .k { font-size:10px; text-transform:uppercase; letter-spacing:.4px; color:#8b949e; }
+  .detail-grid .v { font-size:13px; margin-top:2px; word-break:break-word; }
+
+  .sect-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.5px;
+                color:#8b949e; margin:14px 0 6px; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  th { text-align:left; padding:7px 10px; color:#8b949e; font-weight:600; border-bottom:1px solid #30363d; font-size:11px; text-transform:uppercase; letter-spacing:.3px; }
+  td { padding:7px 10px; border-bottom:1px solid #21262d; }
+  tr:last-child td { border-bottom:none; }
+  td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  .empty-row { color:#6e7681; font-style:italic; padding:8px 10px; font-size:12px; }
+
+  .closing-row td { font-weight:700; border-top:2px solid #30363d; background:#1b222b; }
+
+  .empty-state { text-align:center; color:#8b949e; padding:50px 20px; }
+</style>
+</head>
+<body>
+
+<div class="ctrl-bar">
+  <button class="load-btn" id="load-btn" onclick="loadAllRecords()">⬇ Load All Records</button>
+  <div class="prog-wrap"><div class="prog-bar" id="prog-bar"></div></div>
+  <span class="status-txt" id="status-txt">Press Load to fetch data from Manager</span>
+</div>
+
+<div id="app"></div>
+
+<script>
+/* ══════════════════════════════════
+   postMessage helper — DO NOT MODIFY
+══════════════════════════════════ */
+function postMessageWithResponse(message) {
+  return new Promise((resolve, reject) => {
+    const requestId = crypto.randomUUID();
+    const timer = setTimeout(() => {
+      window.removeEventListener('message', handler);
+      reject(new Error('Timeout — is this running inside Manager.io?'));
+    }, 15000);
+    function handler(event) {
+      if (event.data?.type?.endsWith('-response') && event.data?.requestId === requestId) {
+        clearTimeout(timer);
+        window.removeEventListener('message', handler);
+        resolve(event.data.body);
+      }
+    }
+    window.addEventListener('message', handler);
+    window.parent.postMessage({ ...message, requestId }, '*');
+  });
+}
+
+/* ══════════════════════════════════
+   fetchAllPages — generalised paginated fetch
+   Fetches ALL pages — DO NOT SIMPLIFY.
+   Manager.io returns ≤50 records per call.
+   This loop follows next_page_token until
+   every record is loaded. Same loop as the
+   skeleton's getReceipts, parameterised by
+   endpoint so the report can join data across
+   customers / invoices / receipts / credit notes.
+══════════════════════════════════ */
+async function fetchAllPages(endpoint, onProgress) {
+  const allItems = [];
+  let nextToken  = null;
+  let pageNum    = 0;
+  let apiTotal   = null;
+
+  do {
+    const path = nextToken
+      ? '/api4/' + endpoint + '?PageSize=99999&next_page_token=' + encodeURIComponent(nextToken)
+      : '/api4/' + endpoint + '?PageSize=99999';
+
+    const data = await postMessageWithResponse({ type: 'api-request', method: 'GET', path });
+
+    const page = Array.isArray(data) ? data : (data.items || data.data || []);
+    allItems.push(...page);
+
+    nextToken = data.next_page_token || data.nextPageToken || data._links?.next?.href || null;
+
+    if (apiTotal === null) {
+      apiTotal = data.totalCount ?? data.total ?? data.count ?? data._metadata?.totalCount ?? null;
+    }
+
+    pageNum++;
+    if (onProgress) onProgress(endpoint, allItems.length, apiTotal, pageNum);
+    if (pageNum >= 1000) break;
+
+  } while (nextToken);
+
+  return allItems;
+}
+
+/* ══════════════════════════════════
+   loadAllRecords — wired to Load button.
+   Pulls every dataset the report needs.
+══════════════════════════════════ */
+const DATASETS = [
+  { key:'customers',        endpoint:'customers',                        required:true  },
+  { key:'invoices',         endpoint:'sales-invoices',                   required:true  },
+  { key:'receipts',         endpoint:'receipts',                         required:true  },
+  { key:'creditNotes',      endpoint:'credit-notes',                     required:false },
+  { key:'startingBalances', endpoint:'sales-invoices-starting-balances', required:false },
+];
+
+async function loadAllRecords() {
+  const btn    = document.getElementById('load-btn');
+  const bar    = document.getElementById('prog-bar');
+  const status = document.getElementById('status-txt');
+  const app    = document.getElementById('app');
+
+  btn.disabled = true;
+  btn.textContent = 'Loading…';
+  bar.style.width = '0%';
+  app.innerHTML = '';
+
+  const bundle = {};
+  const loadedNames = [];
+  const skipped = [];
+
+  try {
+    for (let i = 0; i < DATASETS.length; i++) {
+      const ds = DATASETS[i];
+      try {
+        bundle[ds.key] = await fetchAllPages(ds.endpoint, (ep, loaded, total, page) => {
+          status.textContent = total
+            ? `${ep}: page ${page} · ${loaded.toLocaleString()} / ${total.toLocaleString()}`
+            : `${ep}: page ${page} · ${loaded.toLocaleString()} loaded…`;
+        });
+        loadedNames.push(`${ds.endpoint} (${bundle[ds.key].length})`);
+      } catch (e) {
+        // Optional endpoints may not exist on every business — keep going.
+        bundle[ds.key] = [];
+        if (ds.required) throw e;
+        skipped.push(ds.endpoint);
+      }
+      bar.style.width = Math.round((i + 1) / DATASETS.length * 100) + '%';
+    }
+
+    bar.style.width = '100%';
+    status.textContent = `✓ Loaded ${loadedNames.join(', ')}` + (skipped.length ? ` · skipped: ${skipped.join(', ')}` : '');
+    btn.textContent = '↺ Reload';
+    btn.disabled = false;
+    render(bundle);
+
+  } catch (err) {
+    status.textContent = '⚠ ' + err.message;
+    btn.textContent = '↺ Retry';
+    btn.disabled = false;
+    app.innerHTML = `<div class="err-box">⚠ ${err.message}<br><small>Make sure this is running inside Manager.io</small></div>`;
+  }
+}
+
+/* ══════════════════════════════════
+   Helpers — defensive field access
+══════════════════════════════════ */
+
+// Numeric coercion that never returns NaN.
+function num(v) {
+  if (v === null || v === undefined || v === '') return 0;
+  const n = typeof v === 'string' ? parseFloat(v.replace(/,/g, '')) : v;
+  return Number.isFinite(n) ? n : 0;
+}
+
+// First non-null field from a list of candidate keys.
+function pick(obj, keys) {
+  if (!obj) return null;
+  for (const k of keys) {
+    const v = obj[k];
+    if (v !== null && v !== undefined) return v;
+  }
+  return null;
+}
+
+// First numeric field that is actually present (not null/undefined).
+function pickNum(obj, keys) {
+  if (!obj) return null;
+  for (const k of keys) {
+    const v = obj[k];
+    if (v !== null && v !== undefined && v !== '') return num(v);
+  }
+  return null;
+}
+
+// A reference may be a GUID string, or an object carrying key/id/value.
+function refKey(v) {
+  if (v === null || v === undefined) return null;
+  if (typeof v === 'string') return v;
+  if (typeof v === 'object') return v.key || v.id || v.value || null;
+  return null;
+}
+
+// Each record's own identifier.
+function selfKey(r) { return pick(r, ['key', 'id']) || null; }
+
+// Human-readable date from an ISO string (or passthrough).
+function fmtDate(v) {
+  if (!v || typeof v !== 'string') return '—';
+  const d = new Date(v);
+  if (isNaN(d)) return v;
+  return d.toLocaleDateString(undefined, { year:'numeric', month:'short', day:'numeric' });
+}
+
+// Currency-aware money formatter.
+function fmtMoney(v, cur) {
+  const n = num(v);
+  const s = n.toLocaleString(undefined, { minimumFractionDigits:2, maximumFractionDigits:2 });
+  return (cur ? cur + ' ' : '') + s;
+}
+
+// Amount of a single transaction line, with discount + sensible fallbacks.
+function lineAmount(line) {
+  if (!line) return 0;
+  // Prefer an explicit computed total if the API supplies one.
+  const explicit = pickNum(line, ['total', 'totalBeforeTax']);
+  if (explicit !== null) return explicit;
+
+  const qty  = line.qty == null ? 1 : num(line.qty);
+  const unit = pickNum(line, ['salesUnitPrice', 'currencyAmount', 'amount', 'autoUnitPrice']) ?? 0;
+  let base = qty * unit;
+
+  // Apply whichever discount form is present.
+  if (line.discountAmount != null)          base -= num(line.discountAmount);
+  else if (line.discountPercentage != null) base -= base * num(line.discountPercentage) / 100;
+
+  return base;
+}
+
+// Total of an invoice / credit note. Falls back to summing lines,
+// then to a starting-balance amount for opening-balance documents.
+function txnTotal(txn, startBalMap) {
+  const explicit = pickNum(txn, ['total', 'totalAmount', 'amount']);
+  if (explicit !== null && explicit !== 0) return explicit;
+
+  const lines = Array.isArray(txn.lines) ? txn.lines : [];
+  const lineSum = lines.reduce((s, l) => s + lineAmount(l), 0);
+  if (lineSum !== 0) return lineSum;
+
+  const sb = startBalMap && startBalMap[selfKey(txn)];
+  if (sb != null) return num(sb);
+  return explicit !== null ? explicit : 0;
+}
+
+/* ══════════════════════════════════
+   render(bundle) — build the report
+══════════════════════════════════ */
+let STATE = { rows: [], totals: {} };
+
+function render(bundle) {
+  const app = document.getElementById('app');
+
+  const customers   = bundle.customers   || [];
+  const invoices    = bundle.invoices    || [];
+  const receipts    = bundle.receipts    || [];
+  const creditNotes = bundle.creditNotes || [];
+  const startBalRaw = bundle.startingBalances || [];
+
+  // --- Empty-state guard ---
+  if (!customers.length && !invoices.length && !receipts.length) {
+    app.innerHTML = `<div class="empty-state"><h1>No data found</h1>
+      <p class="subtitle">No customers, invoices or receipts were returned for this business.</p></div>`;
+    return;
+  }
+
+  // --- Customer lookup by key ---
+  const custMap = {};
+  customers.forEach(c => { const k = selfKey(c); if (k) custMap[k] = c; });
+
+  // --- Starting balances keyed by the invoice they belong to ---
+  const startBalMap = {};
+  startBalRaw.forEach(sb => {
+    const invKey = refKey(pick(sb, ['salesInvoice']));
+    const amt = pickNum(sb, ['startingBalance']);
+    if (invKey && amt != null) startBalMap[invKey] = amt;
+  });
+
+  // --- Per-customer aggregation buckets ---
+  const UNASSIGNED = '__unassigned__';
+  const buckets = {};
+  function bucket(key) {
+    if (!buckets[key]) buckets[key] = { invoices:[], receipts:[], credits:[] };
+    return buckets[key];
+  }
+
+  // Invoices → attributed to invoice.customer
+  invoices.forEach(inv => {
+    const ck = refKey(pick(inv, ['customer'])) || UNASSIGNED;
+    bucket(ck).invoices.push({
+      key:    selfKey(inv),
+      date:   pick(inv, ['issueDate', 'date']),
+      ref:    pick(inv, ['reference']),
+      total:  txnTotal(inv, startBalMap),
+    });
+  });
+
+  // Receipts → walk lines; AR lines carry the customer + invoice they settle.
+  receipts.forEach(rec => {
+    const headCust = refKey(pick(rec, ['customer']));
+    const lines = Array.isArray(rec.lines) ? rec.lines : [];
+    if (!lines.length) {
+      // No line detail — attribute the whole receipt to its header customer.
+      const ck = headCust || UNASSIGNED;
+      bucket(ck).receipts.push({ date:pick(rec,['date']), ref:pick(rec,['reference']), amount:txnTotal(rec), inv:null });
+      return;
+    }
+    lines.forEach(l => {
+      const ck = refKey(pick(l, ['accountsReceivableCustomer'])) || headCust;
+      if (!ck) return; // not an accounts-receivable line — skip (e.g. bank interest)
+      bucket(ck).receipts.push({
+        date:   pick(rec, ['date']),
+        ref:    pick(rec, ['reference']),
+        amount: lineAmount(l),
+        inv:    refKey(pick(l, ['accountsReceivableSalesInvoice'])),
+      });
+    });
+  });
+
+  // Credit notes → reduce customer balance
+  creditNotes.forEach(cn => {
+    const ck = refKey(pick(cn, ['customer'])) || UNASSIGNED;
+    bucket(ck).credits.push({
+      date:  pick(cn, ['issueDate', 'date']),
+      ref:   pick(cn, ['reference']),
+      total: txnTotal(cn),
+    });
+  });
+
+  // --- Build display rows: one per customer that has any activity ---
+  const allKeys = new Set([...Object.keys(custMap), ...Object.keys(buckets)]);
+  const rows = [];
+  let gInv = 0, gRec = 0, gCred = 0;
+
+  allKeys.forEach(key => {
+    const c = custMap[key];
+    const b = buckets[key] || { invoices:[], receipts:[], credits:[] };
+
+    const invTotal  = b.invoices.reduce((s, x) => s + num(x.total), 0);
+    const recTotal  = b.receipts.reduce((s, x) => s + num(x.amount), 0);
+    const credTotal = b.credits.reduce((s, x) => s + num(x.total), 0);
+    const closing   = invTotal - recTotal - credTotal;
+
+    // Skip empty unassigned bucket noise.
+    if (!c && !b.invoices.length && !b.receipts.length && !b.credits.length) return;
+
+    gInv  += invTotal;
+    gRec  += recTotal;
+    gCred += credTotal;
+
+    rows.push({
+      key,
+      name: c ? (pick(c, ['name', 'nameWithCode']) || 'Unnamed customer')
+              : (key === UNASSIGNED ? 'Unassigned / Unknown' : 'Unknown customer'),
+      code: c ? pick(c, ['code']) : null,
+      email: c ? pick(c, ['email']) : null,
+      currency: c ? refKey(pick(c, ['currency'])) : null,
+      creditLimit: c ? pickNum(c, ['creditLimit']) : null,
+      inactive: c ? !!c.inactive : false,
+      invoices: b.invoices, receipts: b.receipts, credits: b.credits,
+      invTotal, recTotal, credTotal, closing,
+    });
+  });
+
+  // Largest outstanding balance first.
+  rows.sort((a, b) => b.closing - a.closing);
+
+  STATE = {
+    rows,
+    totals: { customers: rows.length, invoiced: gInv, received: gRec, credited: gCred, outstanding: gInv - gRec - gCred },
+  };
+
+  // --- Shell ---
+  app.innerHTML = `
+    <h1>Customer Transactions Report</h1>
+    <p class="subtitle">Customer details, sales invoices, receipts and closing balances — all on one page.</p>
+
+    <div class="summary">
+      <div class="card"><div class="label">Customers</div><div class="value">${STATE.totals.customers.toLocaleString()}</div></div>
+      <div class="card"><div class="label">Total Invoiced</div><div class="value">${fmtMoney(STATE.totals.invoiced)}</div></div>
+      <div class="card"><div class="label">Total Received</div><div class="value pos">${fmtMoney(STATE.totals.received)}</div></div>
+      <div class="card"><div class="label">Total Outstanding</div><div class="value owe">${fmtMoney(STATE.totals.outstanding)}</div></div>
+    </div>
+
+    <div class="toolbar">
+      <input class="search" id="search" type="text" placeholder="Search customers by name or code…" oninput="applyFilter(this.value)">
+      <span class="src-note">Closing balance = invoices − receipts − credit notes</span>
+    </div>
+
+    <div id="cust-list"></div>`;
+
+  renderList(STATE.rows);
+}
+
+// Render the customer accordions for a given (possibly filtered) row set.
+function renderList(rows) {
+  const list = document.getElementById('cust-list');
+  if (!rows.length) {
+    list.innerHTML = `<div class="empty-state"><p>No customers match your search.</p></div>`;
+    return;
+  }
+
+  list.innerHTML = rows.map((r, i) => {
+    const balClass = Math.abs(r.closing) < 0.005 ? 'bal-zero' : (r.closing > 0 ? 'bal-owe' : 'bal-credit');
+    const balLabel = r.closing < -0.005 ? 'In credit' : (Math.abs(r.closing) < 0.005 ? 'Settled' : 'Owing');
+    const cur = r.currency;
+
+    const invRows = r.invoices.length
+      ? r.invoices
+          .sort((a,b)=> new Date(a.date||0) - new Date(b.date||0))
+          .map(x => `<tr><td>${fmtDate(x.date)}</td><td>${esc(x.ref) || '—'}</td><td class="num">${fmtMoney(x.total, cur)}</td></tr>`).join('')
+      : `<tr><td colspan="3" class="empty-row">No invoices</td></tr>`;
+
+    const recRows = r.receipts.length
+      ? r.receipts
+          .sort((a,b)=> new Date(a.date||0) - new Date(b.date||0))
+          .map(x => `<tr><td>${fmtDate(x.date)}</td><td>${esc(x.ref) || '—'}</td><td class="num">${fmtMoney(x.amount, cur)}</td></tr>`).join('')
+      : `<tr><td colspan="3" class="empty-row">No receipts</td></tr>`;
+
+    const credBlock = r.credits.length ? `
+      <div class="sect-title">Credit Notes</div>
+      <table><thead><tr><th>Date</th><th>Reference</th><th class="num">Amount</th></tr></thead>
+        <tbody>${r.credits.sort((a,b)=> new Date(a.date||0) - new Date(b.date||0))
+          .map(x => `<tr><td>${fmtDate(x.date)}</td><td>${esc(x.ref) || '—'}</td><td class="num">${fmtMoney(x.total, cur)}</td></tr>`).join('')}
+        </tbody></table>` : '';
+
+    return `
+      <div class="cust" id="cust-${i}">
+        <div class="cust-head" onclick="toggleCust(${i})">
+          <span class="chev">▶</span>
+          <div>
+            <span class="cust-name">${esc(r.name)}</span>${r.code ? `<span class="cust-code">${esc(r.code)}</span>` : ''}
+            ${r.inactive ? `<span class="cust-code">· inactive</span>` : ''}
+          </div>
+          <div class="cust-spacer"></div>
+          <div class="cust-meta">
+            ${r.invoices.length} inv · ${r.receipts.length} rec
+          </div>
+          <span class="bal-badge ${balClass}">${balLabel}: ${fmtMoney(r.closing, cur)}</span>
+        </div>
+        <div class="cust-body">
+          <div class="detail-grid">
+            <div><div class="k">Email</div><div class="v">${esc(r.email) || '—'}</div></div>
+            <div><div class="k">Currency</div><div class="v">${esc(cur) || 'Base'}</div></div>
+            <div><div class="k">Credit Limit</div><div class="v">${r.creditLimit != null ? fmtMoney(r.creditLimit, cur) : '—'}</div></div>
+            <div><div class="k">Total Invoiced</div><div class="v">${fmtMoney(r.invTotal, cur)}</div></div>
+            <div><div class="k">Total Received</div><div class="v">${fmtMoney(r.recTotal, cur)}</div></div>
+            <div><div class="k">Credit Notes</div><div class="v">${fmtMoney(r.credTotal, cur)}</div></div>
+          </div>
+
+          <div class="sect-title">Sales Invoices</div>
+          <table>
+            <thead><tr><th>Date</th><th>Reference</th><th class="num">Amount</th></tr></thead>
+            <tbody>${invRows}</tbody>
+          </table>
+
+          <div class="sect-title">Receipts</div>
+          <table>
+            <thead><tr><th>Date</th><th>Reference</th><th class="num">Amount</th></tr></thead>
+            <tbody>${recRows}</tbody>
+          </table>
+
+          ${credBlock}
+
+          <table style="margin-top:14px">
+            <tbody>
+              <tr class="closing-row">
+                <td>Closing Balance</td><td></td>
+                <td class="num">${fmtMoney(r.closing, cur)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// Basic HTML escaping for any text pulled from the API.
+function esc(v) {
+  if (v === null || v === undefined) return '';
+  return String(v).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+function toggleCust(i) {
+  document.getElementById('cust-' + i)?.classList.toggle('open');
+}
+
+// Case-insensitive filter over name + code.
+function applyFilter(q) {
+  const term = (q || '').trim().toLowerCase();
+  if (!term) { renderList(STATE.rows); return; }
+  const filtered = STATE.rows.filter(r =>
+    (r.name || '').toLowerCase().includes(term) ||
+    (r.code || '').toLowerCase().includes(term));
+  renderList(filtered);
+}
+</script>
+</body>
+</html>
