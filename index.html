@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Customer Ledger</title>
+<!-- PDF generation (landscape) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
   * { box-sizing:border-box; margin:0; padding:0; }
   body { font-family:system-ui,sans-serif; background:#ffffff; color:#24292f; min-height:100vh; padding:20px; }
@@ -33,12 +36,31 @@
 
   /* ── Customer header card ── */
   .cust-card {
+    display:flex; gap:24px; align-items:flex-start; justify-content:space-between;
     border:1px solid #d0d7de; border-radius:10px; padding:16px 18px;
-    background:#f6f8fa; margin-bottom:18px;
+    background:#f6f8fa; margin-bottom:18px; flex-wrap:wrap;
+  }
+  .cust-left { flex:1 1 320px; min-width:260px; }
+  .cust-right {
+    flex:1 1 300px; min-width:240px; max-width:50%;
+    border-left:1px solid #d0d7de; padding-left:20px;
+  }
+  @media (max-width:640px){
+    .cust-right { border-left:none; border-top:1px solid #d0d7de; padding-left:0; padding-top:12px; max-width:100%; }
   }
   .cust-card h2 { font-size:18px; margin-bottom:6px; }
   .cust-card .meta { font-size:12px; color:#57606a; margin-bottom:8px; }
   .cust-card .addr { font-size:13px; color:#24292f; white-space:pre-wrap; line-height:1.4; }
+  .cust-right .lbl { font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:#57606a; margin-bottom:6px; font-weight:700; }
+  .cust-right .inv-val { font-size:13px; color:#24292f; white-space:pre-wrap; line-height:1.45; }
+
+  /* ── PDF button ── */
+  .pdf-btn {
+    padding:8px 18px; border:1px solid #d0d7de; border-radius:7px; cursor:pointer;
+    font-size:13px; font-weight:700; background:#fff; color:#24292f; transition:background .15s;
+  }
+  .pdf-btn:hover { background:#f3f4f6; }
+  .ledger-toolbar { display:flex; justify-content:flex-end; margin-bottom:10px; }
 
   /* ── Ledger table ── */
   .table-wrap { overflow-x:auto; border:1px solid #d0d7de; border-radius:10px; }
@@ -387,6 +409,52 @@ function escapeHtml(s) {
     ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
 }
 
+/* Inventory Details custom field key (from the custom-fields export) */
+const INVENTORY_DETAILS_KEY = '019ef7b2-7640-709c-9994-878a02913a78';
+
+/* Read a custom field value (any bucket) from a record or its lines */
+function getCustomField(obj, key) {
+  if (!obj) return '';
+  const b = obj.customFields2;
+  if (b) {
+    for (const bucket of ['strings', 'decimals', 'dates', 'booleans']) {
+      const val = b[bucket] && b[bucket][key];
+      if (val != null && val !== '') return String(val);
+    }
+  }
+  if (obj.customFields && obj.customFields[key] != null && obj.customFields[key] !== '') {
+    return String(obj.customFields[key]);
+  }
+  if (Array.isArray(obj.lines)) {
+    for (const ln of obj.lines) {
+      const v = getCustomField(ln, key);
+      if (v) return v;
+    }
+  }
+  return '';
+}
+
+/* Find Inventory Details for a customer: check the customer record first,
+   then fall back to scanning that customer's invoices/receipts. */
+function findInventoryDetails(c, custKey) {
+  let v = getCustomField(c, INVENTORY_DETAILS_KEY);
+  if (v) return v;
+  for (const b of (TXN?.invoices || [])) {
+    const r = rec(b);
+    if (!matchesCustomer(r, custKey)) continue;
+    v = getCustomField(r, INVENTORY_DETAILS_KEY);
+    if (v) return v;
+  }
+  for (const b of (TXN?.receipts || [])) {
+    const r = rec(b);
+    const belongs = customerLineAmount(r, custKey) || matchesCustomer(r, custKey);
+    if (!belongs) continue;
+    v = getCustomField(r, INVENTORY_DETAILS_KEY);
+    if (v) return v;
+  }
+  return '';
+}
+
 /* ══════════════════════════════════
    onSelectCustomer — build the ledger
 ══════════════════════════════════ */
@@ -494,16 +562,23 @@ function onSelectCustomer(idx) {
     totRecd += row.received || 0;
   }
 
-  // ── Customer header card ──
+  // ── Customer header card (details left, inventory details right) ──
   const addr = c.billingAddress || c.defaultBillingAddress || '—';
+  const inventoryDetails = findInventoryDetails(c, custKey);
   const headerHtml = `
     <div class="cust-card">
-      <h2>${escapeHtml(c.name || c.nameWithCode || 'Customer')}</h2>
-      <div class="meta">
-        ${c.code ? 'Code: ' + escapeHtml(c.code) : ''}
-        ${c.email ? ' · ' + escapeHtml(c.email) : ''}
+      <div class="cust-left">
+        <h2>${escapeHtml(c.name || c.nameWithCode || 'Customer')}</h2>
+        <div class="meta">
+          ${c.code ? 'Code: ' + escapeHtml(c.code) : ''}
+          ${c.email ? ' · ' + escapeHtml(c.email) : ''}
+        </div>
+        <div class="addr">${escapeHtml(addr)}</div>
       </div>
-      <div class="addr">${escapeHtml(addr)}</div>
+      <div class="cust-right">
+        <div class="lbl">Inventory Details</div>
+        <div class="inv-val">${escapeHtml(inventoryDetails || '—')}</div>
+      </div>
     </div>
     <div class="summary-row">
       <div class="stat"><div class="lbl">Total Receivable</div><div class="val">${fmt(totRecv)}</div></div>
@@ -512,6 +587,16 @@ function onSelectCustomer(idx) {
         <div class="val ${running < 0 ? 'neg' : ''}">${fmt(running)}</div></div>
     </div>
   `;
+
+  // Stash everything the PDF generator needs
+  window.__LEDGER = {
+    name: c.name || c.nameWithCode || 'Customer',
+    code: c.code || '',
+    email: c.email || '',
+    address: addr === '—' ? '' : addr,
+    inventory: inventoryDetails || '',
+    rows, totRecv, totRecd, closing: running,
+  };
 
   // ── Empty ledger ──
   if (rows.length === 0) {
@@ -534,6 +619,9 @@ function onSelectCustomer(idx) {
   `).join('');
 
   area.innerHTML = headerHtml + `
+    <div class="ledger-toolbar">
+      <button class="pdf-btn" onclick="downloadPdf()">⬇ Download PDF (Landscape)</button>
+    </div>
     <div class="table-wrap">
       <table class="ledger">
         <thead>
@@ -558,6 +646,82 @@ function onSelectCustomer(idx) {
       </table>
     </div>
   `;
+}
+
+/* ══════════════════════════════════
+   downloadPdf — landscape A4 ledger via jsPDF + autoTable
+══════════════════════════════════ */
+function downloadPdf() {
+  const L = window.__LEDGER;
+  if (!L) { alert('Select a customer first.'); return; }
+  if (!window.jspdf || !window.jspdf.jsPDF) {
+    alert('PDF library failed to load (check internet connection).');
+    return;
+  }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const M = 40; // margin
+
+  // ── Title ──
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(16);
+  doc.text('Customer Ledger', M, 40);
+
+  // ── Customer details (left block) ──
+  doc.setFontSize(11);
+  doc.text(L.name, M, 62);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+  let ly = 78;
+  const metaBits = [L.code ? 'Code: ' + L.code : '', L.email].filter(Boolean).join('   ');
+  if (metaBits) { doc.text(metaBits, M, ly); ly += 13; }
+  if (L.address) {
+    const addrLines = doc.splitTextToSize(L.address, pageW * 0.45);
+    doc.text(addrLines, M, ly);
+    ly += addrLines.length * 12;
+  }
+
+  // ── Inventory Details (right block) ──
+  const rightX = pageW - M;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+  doc.text('Inventory Details', rightX, 62, { align: 'right' });
+  doc.setFont('helvetica', 'normal');
+  const invLines = doc.splitTextToSize(L.inventory || '—', pageW * 0.40);
+  doc.text(invLines, rightX, 76, { align: 'right' });
+  const rightBottom = 76 + invLines.length * 12;
+
+  // ── Table ──
+  const badgeLabel = { inv: 'Invoice', rec: 'Receipt', cn: 'Credit Note', je: 'Journal' };
+  const body = L.rows.map(r => ([
+    fmtDate(r.date),
+    (badgeLabel[r.type] || '') + (r.reference ? '  ' + r.reference : ''),
+    r.description || '—',
+    r.receivable ? fmt(r.receivable) : '',
+    r.received ? fmt(r.received) : '',
+    fmt(r.balance),
+  ]));
+
+  doc.autoTable({
+    startY: Math.max(ly, rightBottom) + 12,
+    head: [['Date', 'Reference', 'Description', 'Receivable', 'Received', 'Balance']],
+    body,
+    foot: [['Totals', '', '', fmt(L.totRecv), fmt(L.totRecd), fmt(L.closing)]],
+    theme: 'grid',
+    styles: { fontSize: 8, cellPadding: 4, lineColor: [208, 215, 222], lineWidth: 0.5, textColor: [36, 41, 47] },
+    headStyles: { fillColor: [246, 248, 250], textColor: [36, 41, 47], fontStyle: 'bold' },
+    footStyles: { fillColor: [246, 248, 250], textColor: [36, 41, 47], fontStyle: 'bold' },
+    columnStyles: {
+      0: { cellWidth: 70 },
+      1: { cellWidth: 130 },
+      3: { halign: 'right' },
+      4: { halign: 'right' },
+      5: { halign: 'right' },
+    },
+    margin: { left: M, right: M },
+  });
+
+  const safe = (L.name || 'customer').replace(/[^\w\-]+/g, '_');
+  doc.save('Customer-Ledger-' + safe + '.pdf');
 }
 </script>
 </body>
