@@ -163,23 +163,56 @@ const rec = b => b?.item || b || {};
 // The record's own key (some batches expose it at top level, some inside item)
 const recKey = b => b?.key || b?.item?.key || b?.id || null;
 
-/* Robust amount extraction: prefer a computed total, else sum line totals */
+/* Compute a single line's amount from raw inputs when no computed
+   total is present (Manager's batch list omits line.total). */
+function computeLineAmount(ln) {
+  if (typeof ln?.total === 'number' && ln.total !== 0) return ln.total;
+  if (typeof ln?.totalBeforeTax === 'number' && ln.totalBeforeTax !== 0) {
+    return ln.totalBeforeTax + (Number(ln?.taxAmount) || 0);
+  }
+  // qty defaults to 1 when omitted but a unit price exists
+  const qty   = (ln?.qty == null) ? 1 : Number(ln.qty) || 0;
+  const price = Number(ln?.salesUnitPrice ?? ln?.currencyAmount ?? ln?.amount) || 0;
+  let base = qty * price;
+  // Apply discount (fixed amount takes precedence over percentage)
+  if (typeof ln?.discountAmount === 'number' && ln.discountAmount) {
+    base -= ln.discountAmount;
+  } else if (typeof ln?.discountPercentage === 'number' && ln.discountPercentage) {
+    base -= base * (ln.discountPercentage / 100);
+  }
+  // Add tax if a tax amount is supplied
+  base += Number(ln?.taxAmount) || 0;
+  return base;
+}
+
+/* Robust amount extraction: prefer a known computed total,
+   else compute & sum line amounts, else deep-scan total-like fields. */
 function extractAmount(r) {
+  // 1) Known explicit total fields (most reliable)
   const candidates = [
     r?.total, r?.totalInBaseCurrency, r?.totalAmountInBaseCurrency,
-    r?.amount, r?.balanceDue, r?.invoiceTotal
+    r?.amount, r?.balanceDue, r?.invoiceTotal, r?.grandTotal, r?.totalAmount,
+    r?.summaryAmount, r?.amountInBaseCurrency
   ];
   for (const c of candidates) {
-    if (typeof c === 'number' && !isNaN(c)) return c;
+    if (typeof c === 'number' && !isNaN(c) && c !== 0) return c;
   }
-  // Fall back to summing line totals
-  if (Array.isArray(r?.lines)) {
-    let sum = 0, found = false;
-    for (const ln of r.lines) {
-      const v = ln?.total ?? ln?.amount ?? ln?.totalBeforeTax;
-      if (typeof v === 'number') { sum += v; found = true; }
-    }
-    if (found) return sum;
+
+  // 2) Compute from lines (the reliable path for batch-list records)
+  if (Array.isArray(r?.lines) && r.lines.length) {
+    let sum = 0;
+    for (const ln of r.lines) sum += computeLineAmount(ln);
+    if (sum !== 0) return sum;
+  }
+
+  // 3) Deep-scan: any top-level numeric key that looks like a money total,
+  //    excluding rates / flags / counts that would pollute the figure.
+  const skip = /rate|percentage|days|count|number|timestamp|exchange|qty|quantity|discountpercent/i;
+  const wanted = /total|amount|balance|grand|due/i;
+  for (const [k, v] of Object.entries(r || {})) {
+    if (typeof v !== 'number' || isNaN(v) || v === 0) continue;
+    if (skip.test(k)) continue;
+    if (wanted.test(k)) return v;
   }
   return 0;
 }
