@@ -3,80 +3,71 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Customer Transactions Report</title>
+<title>Customer Ledger</title>
 <style>
   * { box-sizing:border-box; margin:0; padding:0; }
-  body { font-family:system-ui,sans-serif; background:#0d1117; color:#e6edf3; min-height:100vh; padding:20px; }
+  body { font-family:system-ui,sans-serif; background:#ffffff; color:#24292f; min-height:100vh; padding:20px; }
 
-  /* ---- control bar (from skeleton) ---- */
   .ctrl-bar {
     display:flex; align-items:center; gap:10px; flex-wrap:wrap;
     padding:12px 16px; margin-bottom:18px;
-    background:#161b22; border:1px solid #30363d; border-radius:10px;
+    background:#f6f8fa; border:1px solid #d0d7de; border-radius:10px;
   }
   .load-btn {
     padding:8px 20px; border:none; border-radius:7px; cursor:pointer;
-    font-size:13px; font-weight:700; background:#58a6ff; color:#fff; transition:opacity .15s;
+    font-size:13px; font-weight:700; background:#0969da; color:#fff; transition:opacity .15s;
   }
   .load-btn:disabled { opacity:.45; cursor:not-allowed; }
-  .prog-wrap { flex:1; min-width:100px; height:5px; background:#30363d; border-radius:3px; overflow:hidden; }
-  .prog-bar  { height:100%; width:0%; background:#58a6ff; border-radius:3px; transition:width .25s; }
-  .status-txt { font-size:12px; color:#8b949e; white-space:nowrap; }
-  .err-box { color:#f85149; background:#161b22; border:1px solid #30363d; border-radius:8px; padding:12px 16px; font-size:13px; margin-bottom:16px; }
+  .prog-wrap { flex:1; min-width:100px; height:5px; background:#d0d7de; border-radius:3px; overflow:hidden; }
+  .prog-bar  { height:100%; width:0%; background:#0969da; border-radius:3px; transition:width .25s; }
+  .status-txt { font-size:12px; color:#57606a; white-space:nowrap; }
+  .err-box { color:#cf222e; background:#f6f8fa; border:1px solid #d0d7de; border-radius:8px; padding:12px 16px; font-size:13px; margin-bottom:16px; }
 
-  /* ---- headings ---- */
-  h1 { font-size:20px; font-weight:800; margin-bottom:4px; }
-  .subtitle { font-size:13px; color:#8b949e; margin-bottom:18px; }
+  /* ── Customer selector ── */
+  .selector-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:18px; }
+  .selector-row label { font-size:13px; font-weight:600; color:#24292f; }
+  select.cust-select {
+    padding:8px 12px; min-width:280px; font-size:13px;
+    border:1px solid #d0d7de; border-radius:7px; background:#fff; color:#24292f;
+  }
 
-  /* ---- summary cards ---- */
-  .summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:20px; }
-  .card { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:16px 18px; }
-  .card .label { font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#8b949e; margin-bottom:6px; }
-  .card .value { font-size:22px; font-weight:800; }
-  .card .value.owe { color:#e3b341; }
-  .card .value.pos { color:#3fb950; }
+  /* ── Customer header card ── */
+  .cust-card {
+    border:1px solid #d0d7de; border-radius:10px; padding:16px 18px;
+    background:#f6f8fa; margin-bottom:18px;
+  }
+  .cust-card h2 { font-size:18px; margin-bottom:6px; }
+  .cust-card .meta { font-size:12px; color:#57606a; margin-bottom:8px; }
+  .cust-card .addr { font-size:13px; color:#24292f; white-space:pre-wrap; line-height:1.4; }
 
-  /* ---- toolbar ---- */
-  .toolbar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
-  .search { flex:1; min-width:200px; padding:9px 13px; background:#161b22; border:1px solid #30363d;
-            border-radius:8px; color:#e6edf3; font-size:13px; }
-  .search:focus { outline:none; border-color:#58a6ff; }
-  .src-note { font-size:11px; color:#8b949e; }
+  /* ── Ledger table ── */
+  .table-wrap { overflow-x:auto; border:1px solid #d0d7de; border-radius:10px; }
+  table.ledger { width:100%; border-collapse:collapse; font-size:13px; }
+  table.ledger thead th {
+    background:#f6f8fa; text-align:left; padding:10px 12px; font-weight:700;
+    border-bottom:2px solid #d0d7de; white-space:nowrap; color:#24292f;
+  }
+  table.ledger tbody td { padding:9px 12px; border-bottom:1px solid #eaeef2; vertical-align:top; }
+  table.ledger tbody tr:hover { background:#f6f8fa; }
+  table.ledger td.num, table.ledger th.num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  table.ledger tfoot td {
+    padding:11px 12px; font-weight:700; border-top:2px solid #d0d7de; background:#f6f8fa;
+  }
+  .neg { color:#cf222e; }
+  .badge {
+    display:inline-block; font-size:10px; font-weight:700; padding:1px 6px; border-radius:5px;
+    background:#ddf4ff; color:#0969da; margin-right:6px; text-transform:uppercase; letter-spacing:.3px;
+  }
+  .badge.inv { background:#ddf4ff; color:#0969da; }
+  .badge.rec { background:#dafbe1; color:#1a7f37; }
+  .badge.cn  { background:#fff1e5; color:#bc4c00; }
+  .badge.je  { background:#f3e8ff; color:#8250df; }
 
-  /* ---- customer accordion ---- */
-  .cust { background:#161b22; border:1px solid #30363d; border-radius:10px; margin-bottom:10px; overflow:hidden; }
-  .cust-head { display:flex; align-items:center; gap:14px; padding:14px 18px; cursor:pointer; user-select:none; }
-  .cust-head:hover { background:#1b222b; }
-  .chev { font-size:11px; color:#8b949e; transition:transform .2s; flex-shrink:0; }
-  .cust.open .chev { transform:rotate(90deg); }
-  .cust-name { font-weight:700; font-size:15px; }
-  .cust-code { font-size:11px; color:#8b949e; margin-left:6px; }
-  .cust-spacer { flex:1; }
-  .cust-meta { font-size:11px; color:#8b949e; text-align:right; }
-  .bal-badge { font-size:14px; font-weight:800; padding:4px 12px; border-radius:20px; white-space:nowrap; }
-  .bal-owe { background:rgba(227,179,65,.15); color:#e3b341; }
-  .bal-zero { background:rgba(63,185,80,.15); color:#3fb950; }
-  .bal-credit { background:rgba(88,166,255,.15); color:#58a6ff; }
-
-  .cust-body { display:none; padding:0 18px 18px; border-top:1px solid #30363d; }
-  .cust.open .cust-body { display:block; }
-
-  .detail-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px 22px; padding:16px 0; }
-  .detail-grid .k { font-size:10px; text-transform:uppercase; letter-spacing:.4px; color:#8b949e; }
-  .detail-grid .v { font-size:13px; margin-top:2px; word-break:break-word; }
-
-  .sect-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.5px;
-                color:#8b949e; margin:14px 0 6px; }
-  table { width:100%; border-collapse:collapse; font-size:12.5px; }
-  th { text-align:left; padding:7px 10px; color:#8b949e; font-weight:600; border-bottom:1px solid #30363d; font-size:11px; text-transform:uppercase; letter-spacing:.3px; }
-  td { padding:7px 10px; border-bottom:1px solid #21262d; }
-  tr:last-child td { border-bottom:none; }
-  td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
-  .empty-row { color:#6e7681; font-style:italic; padding:8px 10px; font-size:12px; }
-
-  .closing-row td { font-weight:700; border-top:2px solid #30363d; background:#1b222b; }
-
-  .empty-state { text-align:center; color:#8b949e; padding:50px 20px; }
+  .empty-state { padding:40px 20px; text-align:center; color:#57606a; font-size:14px; }
+  .summary-row { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:14px; }
+  .stat { flex:1; min-width:150px; border:1px solid #d0d7de; border-radius:9px; padding:12px 14px; background:#fff; }
+  .stat .lbl { font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:#57606a; }
+  .stat .val { font-size:20px; font-weight:700; margin-top:3px; font-variant-numeric:tabular-nums; }
 </style>
 </head>
 <body>
@@ -113,14 +104,10 @@ function postMessageWithResponse(message) {
 }
 
 /* ══════════════════════════════════
-   fetchAllPages — generalised paginated fetch
-   Fetches ALL pages — DO NOT SIMPLIFY.
+   Generic paginated batch fetcher
    Manager.io returns ≤50 records per call.
-   This loop follows next_page_token until
-   every record is loaded. Same loop as the
-   skeleton's getReceipts, parameterised by
-   endpoint so the report can join data across
-   customers / invoices / receipts / credit notes.
+   Follows next_page_token until done.
+   DO NOT SIMPLIFY to a single fetch.
 ══════════════════════════════════ */
 async function fetchAllPages(endpoint, onProgress) {
   const allItems = [];
@@ -130,8 +117,8 @@ async function fetchAllPages(endpoint, onProgress) {
 
   do {
     const path = nextToken
-      ? '/api4/' + endpoint + '?PageSize=99999&next_page_token=' + encodeURIComponent(nextToken)
-      : '/api4/' + endpoint + '?PageSize=99999';
+      ? `/api4/${endpoint}?PageSize=99999&next_page_token=` + encodeURIComponent(nextToken)
+      : `/api4/${endpoint}?PageSize=99999`;
 
     const data = await postMessageWithResponse({ type: 'api-request', method: 'GET', path });
 
@@ -145,26 +132,96 @@ async function fetchAllPages(endpoint, onProgress) {
     }
 
     pageNum++;
-    if (onProgress) onProgress(endpoint, allItems.length, apiTotal, pageNum);
+    if (onProgress) onProgress(allItems.length, apiTotal, pageNum);
     if (pageNum >= 1000) break;
-
   } while (nextToken);
 
   return allItems;
 }
 
-/* ══════════════════════════════════
-   loadAllRecords — wired to Load button.
-   Pulls every dataset the report needs.
-══════════════════════════════════ */
-const DATASETS = [
-  { key:'customers',        endpoint:'customers',                        required:true  },
-  { key:'invoices',         endpoint:'sales-invoices',                   required:true  },
-  { key:'receipts',         endpoint:'receipts',                         required:true  },
-  { key:'creditNotes',      endpoint:'credit-notes',                     required:false },
-  { key:'startingBalances', endpoint:'sales-invoices-starting-balances', required:false },
-];
+/* customer-batch wrapper (kept for the Load button) */
+function getCustomerBatch(onProgress) {
+  return fetchAllPages('customer-batch', onProgress);
+}
 
+/* ══════════════════════════════════
+   Helpers
+══════════════════════════════════ */
+const fmt = v => {
+  const n = Number(v) || 0;
+  const s = Math.abs(n).toLocaleString(undefined, { minimumFractionDigits:2, maximumFractionDigits:2 });
+  return n < 0 ? '(' + s + ')' : s;
+};
+const fmtDate = d => {
+  if (!d) return '—';
+  const dt = new Date(d);
+  if (isNaN(dt)) return String(d);
+  return dt.toLocaleDateString(undefined, { year:'numeric', month:'short', day:'2-digit' });
+};
+// Pull the underlying record object regardless of batch wrapping shape
+const rec = b => b?.item || b || {};
+// The record's own key (some batches expose it at top level, some inside item)
+const recKey = b => b?.key || b?.item?.key || b?.id || null;
+
+/* Robust amount extraction: prefer a computed total, else sum line totals */
+function extractAmount(r) {
+  const candidates = [
+    r?.total, r?.totalInBaseCurrency, r?.totalAmountInBaseCurrency,
+    r?.amount, r?.balanceDue, r?.invoiceTotal
+  ];
+  for (const c of candidates) {
+    if (typeof c === 'number' && !isNaN(c)) return c;
+  }
+  // Fall back to summing line totals
+  if (Array.isArray(r?.lines)) {
+    let sum = 0, found = false;
+    for (const ln of r.lines) {
+      const v = ln?.total ?? ln?.amount ?? ln?.totalBeforeTax;
+      if (typeof v === 'number') { sum += v; found = true; }
+    }
+    if (found) return sum;
+  }
+  return 0;
+}
+
+/* Does this transaction reference the selected customer? */
+function matchesCustomer(r, custKey) {
+  if (!custKey) return false;
+  const direct = r?.customer;
+  if (direct && (direct === custKey || direct?.key === custKey || direct?.id === custKey)) return true;
+  // Some payloads store the customer string id directly
+  if (typeof direct === 'string' && direct === custKey) return true;
+  return false;
+}
+
+/* For journal entries: scan lines for ones tied to the customer,
+   returning {debit, credit} totals attributable to that customer. */
+function journalCustomerSplit(r, custKey) {
+  let debit = 0, credit = 0;
+  if (!Array.isArray(r?.lines)) return { debit, credit };
+  for (const ln of r.lines) {
+    const lineCust =
+      ln?.customer || ln?.accountsReceivableCustomer || ln?.billableExpenseCustomer || ln?.subAccount;
+    const key = lineCust?.key || lineCust?.id || lineCust;
+    if (key && key === custKey) {
+      const d = Number(ln?.debit) || 0;
+      const c = Number(ln?.credit) || 0;
+      debit  += d;
+      credit += c;
+    }
+  }
+  return { debit, credit };
+}
+
+/* ══════════════════════════════════
+   State
+══════════════════════════════════ */
+let CUSTOMERS = [];   // raw customer-batch items
+let TXN = null;       // { invoices, receipts, creditNotes, journals }
+
+/* ══════════════════════════════════
+   loadAllRecords — wired to Load button
+══════════════════════════════════ */
 async function loadAllRecords() {
   const btn    = document.getElementById('load-btn');
   const bar    = document.getElementById('prog-bar');
@@ -176,34 +233,43 @@ async function loadAllRecords() {
   bar.style.width = '0%';
   app.innerHTML = '';
 
-  const bundle = {};
-  const loadedNames = [];
-  const skipped = [];
-
   try {
-    for (let i = 0; i < DATASETS.length; i++) {
-      const ds = DATASETS[i];
+    // 1) Customers
+    status.textContent = 'Loading customers…';
+    CUSTOMERS = await getCustomerBatch((loaded, total, page) => {
+      status.textContent = `Customers · page ${page} · ${loaded.toLocaleString()} loaded`;
+      bar.style.width = '20%';
+    });
+
+    // 2) Transactions (each is a paginated batch endpoint)
+    const steps = [
+      ['sales-invoice-batch', 'invoices',    35],
+      ['receipt-batch',       'receipts',    55],
+      ['credit-note-batch',   'creditNotes', 75],
+      ['journal-entry-batch', 'journals',    95],
+    ];
+    TXN = { invoices:[], receipts:[], creditNotes:[], journals:[] };
+
+    for (const [endpoint, key, pct] of steps) {
+      status.textContent = `Loading ${key}…`;
       try {
-        bundle[ds.key] = await fetchAllPages(ds.endpoint, (ep, loaded, total, page) => {
-          status.textContent = total
-            ? `${ep}: page ${page} · ${loaded.toLocaleString()} / ${total.toLocaleString()}`
-            : `${ep}: page ${page} · ${loaded.toLocaleString()} loaded…`;
+        TXN[key] = await fetchAllPages(endpoint, (loaded, total, page) => {
+          status.textContent = `${key} · page ${page} · ${loaded.toLocaleString()} loaded`;
         });
-        loadedNames.push(`${ds.endpoint} (${bundle[ds.key].length})`);
       } catch (e) {
-        // Optional endpoints may not exist on every business — keep going.
-        bundle[ds.key] = [];
-        if (ds.required) throw e;
-        skipped.push(ds.endpoint);
+        // Non-fatal: an absent endpoint shouldn't break the whole ledger
+        TXN[key] = [];
       }
-      bar.style.width = Math.round((i + 1) / DATASETS.length * 100) + '%';
+      bar.style.width = pct + '%';
     }
 
     bar.style.width = '100%';
-    status.textContent = `✓ Loaded ${loadedNames.join(', ')}` + (skipped.length ? ` · skipped: ${skipped.join(', ')}` : '');
+    status.textContent = `✓ ${CUSTOMERS.length.toLocaleString()} customers · `
+      + `${TXN.invoices.length} inv · ${TXN.receipts.length} rec · `
+      + `${TXN.creditNotes.length} cn · ${TXN.journals.length} je`;
     btn.textContent = '↺ Reload';
     btn.disabled = false;
-    render(bundle);
+    render(CUSTOMERS);
 
   } catch (err) {
     status.textContent = '⚠ ' + err.message;
@@ -214,345 +280,206 @@ async function loadAllRecords() {
 }
 
 /* ══════════════════════════════════
-   Helpers — defensive field access
+   render(items) — build customer selector
 ══════════════════════════════════ */
+function render(items) {
+  const app = document.getElementById('app');
 
-// Numeric coercion that never returns NaN.
-function num(v) {
-  if (v === null || v === undefined || v === '') return 0;
-  const n = typeof v === 'string' ? parseFloat(v.replace(/,/g, '')) : v;
-  return Number.isFinite(n) ? n : 0;
-}
-
-// First non-null field from a list of candidate keys.
-function pick(obj, keys) {
-  if (!obj) return null;
-  for (const k of keys) {
-    const v = obj[k];
-    if (v !== null && v !== undefined) return v;
+  if (!items || items.length === 0) {
+    app.innerHTML = `<div class="empty-state">No customers found in this business.</div>`;
+    return;
   }
-  return null;
+
+  // Sort customers by display name for the dropdown
+  const sorted = [...items].sort((a, b) => {
+    const an = (rec(a).nameWithCode || rec(a).name || '').toLowerCase();
+    const bn = (rec(b).nameWithCode || rec(b).name || '').toLowerCase();
+    return an.localeCompare(bn);
+  });
+
+  const options = sorted.map((c, i) => {
+    const r = rec(c);
+    const label = r.nameWithCode || r.text || r.name || ('Customer ' + (i + 1));
+    // store index into the sorted array
+    return `<option value="${i}">${escapeHtml(label)}</option>`;
+  }).join('');
+
+  app.innerHTML = `
+    <div class="selector-row">
+      <label for="cust-select">Customer:</label>
+      <select class="cust-select" id="cust-select" onchange="onSelectCustomer(this.value)">
+        <option value="">— Select a customer —</option>
+        ${options}
+      </select>
+    </div>
+    <div id="ledger-area">
+      <div class="empty-state">Select a customer to view their ledger.</div>
+    </div>
+  `;
+
+  // Keep the sorted list accessible to the change handler
+  window.__SORTED_CUSTOMERS = sorted;
 }
 
-// First numeric field that is actually present (not null/undefined).
-function pickNum(obj, keys) {
-  if (!obj) return null;
-  for (const k of keys) {
-    const v = obj[k];
-    if (v !== null && v !== undefined && v !== '') return num(v);
-  }
-  return null;
-}
-
-// A reference may be a GUID string, or an object carrying key/id/value.
-function refKey(v) {
-  if (v === null || v === undefined) return null;
-  if (typeof v === 'string') return v;
-  if (typeof v === 'object') return v.key || v.id || v.value || null;
-  return null;
-}
-
-// Each record's own identifier.
-function selfKey(r) { return pick(r, ['key', 'id']) || null; }
-
-// Human-readable date from an ISO string (or passthrough).
-function fmtDate(v) {
-  if (!v || typeof v !== 'string') return '—';
-  const d = new Date(v);
-  if (isNaN(d)) return v;
-  return d.toLocaleDateString(undefined, { year:'numeric', month:'short', day:'numeric' });
-}
-
-// Currency-aware money formatter.
-function fmtMoney(v, cur) {
-  const n = num(v);
-  const s = n.toLocaleString(undefined, { minimumFractionDigits:2, maximumFractionDigits:2 });
-  return (cur ? cur + ' ' : '') + s;
-}
-
-// Amount of a single transaction line, with discount + sensible fallbacks.
-function lineAmount(line) {
-  if (!line) return 0;
-  // Prefer an explicit computed total if the API supplies one.
-  const explicit = pickNum(line, ['total', 'totalBeforeTax']);
-  if (explicit !== null) return explicit;
-
-  const qty  = line.qty == null ? 1 : num(line.qty);
-  const unit = pickNum(line, ['salesUnitPrice', 'currencyAmount', 'amount', 'autoUnitPrice']) ?? 0;
-  let base = qty * unit;
-
-  // Apply whichever discount form is present.
-  if (line.discountAmount != null)          base -= num(line.discountAmount);
-  else if (line.discountPercentage != null) base -= base * num(line.discountPercentage) / 100;
-
-  return base;
-}
-
-// Total of an invoice / credit note. Falls back to summing lines,
-// then to a starting-balance amount for opening-balance documents.
-function txnTotal(txn, startBalMap) {
-  const explicit = pickNum(txn, ['total', 'totalAmount', 'amount']);
-  if (explicit !== null && explicit !== 0) return explicit;
-
-  const lines = Array.isArray(txn.lines) ? txn.lines : [];
-  const lineSum = lines.reduce((s, l) => s + lineAmount(l), 0);
-  if (lineSum !== 0) return lineSum;
-
-  const sb = startBalMap && startBalMap[selfKey(txn)];
-  if (sb != null) return num(sb);
-  return explicit !== null ? explicit : 0;
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, m =>
+    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
 }
 
 /* ══════════════════════════════════
-   render(bundle) — build the report
+   onSelectCustomer — build the ledger
 ══════════════════════════════════ */
-let STATE = { rows: [], totals: {} };
-
-function render(bundle) {
-  const app = document.getElementById('app');
-
-  const customers   = bundle.customers   || [];
-  const invoices    = bundle.invoices    || [];
-  const receipts    = bundle.receipts    || [];
-  const creditNotes = bundle.creditNotes || [];
-  const startBalRaw = bundle.startingBalances || [];
-
-  // --- Empty-state guard ---
-  if (!customers.length && !invoices.length && !receipts.length) {
-    app.innerHTML = `<div class="empty-state"><h1>No data found</h1>
-      <p class="subtitle">No customers, invoices or receipts were returned for this business.</p></div>`;
+function onSelectCustomer(idx) {
+  const area = document.getElementById('ledger-area');
+  if (idx === '' || idx == null) {
+    area.innerHTML = `<div class="empty-state">Select a customer to view their ledger.</div>`;
     return;
   }
 
-  // --- Customer lookup by key ---
-  const custMap = {};
-  customers.forEach(c => { const k = selfKey(c); if (k) custMap[k] = c; });
+  const customer = window.__SORTED_CUSTOMERS[Number(idx)];
+  const c = rec(customer);
+  const custKey = recKey(customer);
 
-  // --- Starting balances keyed by the invoice they belong to ---
-  const startBalMap = {};
-  startBalRaw.forEach(sb => {
-    const invKey = refKey(pick(sb, ['salesInvoice']));
-    const amt = pickNum(sb, ['startingBalance']);
-    if (invKey && amt != null) startBalMap[invKey] = amt;
-  });
-
-  // --- Per-customer aggregation buckets ---
-  const UNASSIGNED = '__unassigned__';
-  const buckets = {};
-  function bucket(key) {
-    if (!buckets[key]) buckets[key] = { invoices:[], receipts:[], credits:[] };
-    return buckets[key];
-  }
-
-  // Invoices → attributed to invoice.customer
-  invoices.forEach(inv => {
-    const ck = refKey(pick(inv, ['customer'])) || UNASSIGNED;
-    bucket(ck).invoices.push({
-      key:    selfKey(inv),
-      date:   pick(inv, ['issueDate', 'date']),
-      ref:    pick(inv, ['reference']),
-      total:  txnTotal(inv, startBalMap),
-    });
-  });
-
-  // Receipts → walk lines; AR lines carry the customer + invoice they settle.
-  receipts.forEach(rec => {
-    const headCust = refKey(pick(rec, ['customer']));
-    const lines = Array.isArray(rec.lines) ? rec.lines : [];
-    if (!lines.length) {
-      // No line detail — attribute the whole receipt to its header customer.
-      const ck = headCust || UNASSIGNED;
-      bucket(ck).receipts.push({ date:pick(rec,['date']), ref:pick(rec,['reference']), amount:txnTotal(rec), inv:null });
-      return;
-    }
-    lines.forEach(l => {
-      const ck = refKey(pick(l, ['accountsReceivableCustomer'])) || headCust;
-      if (!ck) return; // not an accounts-receivable line — skip (e.g. bank interest)
-      bucket(ck).receipts.push({
-        date:   pick(rec, ['date']),
-        ref:    pick(rec, ['reference']),
-        amount: lineAmount(l),
-        inv:    refKey(pick(l, ['accountsReceivableSalesInvoice'])),
-      });
-    });
-  });
-
-  // Credit notes → reduce customer balance
-  creditNotes.forEach(cn => {
-    const ck = refKey(pick(cn, ['customer'])) || UNASSIGNED;
-    bucket(ck).credits.push({
-      date:  pick(cn, ['issueDate', 'date']),
-      ref:   pick(cn, ['reference']),
-      total: txnTotal(cn),
-    });
-  });
-
-  // --- Build display rows: one per customer that has any activity ---
-  const allKeys = new Set([...Object.keys(custMap), ...Object.keys(buckets)]);
+  // ── Gather rows from each source ──
   const rows = [];
-  let gInv = 0, gRec = 0, gCred = 0;
 
-  allKeys.forEach(key => {
-    const c = custMap[key];
-    const b = buckets[key] || { invoices:[], receipts:[], credits:[] };
-
-    const invTotal  = b.invoices.reduce((s, x) => s + num(x.total), 0);
-    const recTotal  = b.receipts.reduce((s, x) => s + num(x.amount), 0);
-    const credTotal = b.credits.reduce((s, x) => s + num(x.total), 0);
-    const closing   = invTotal - recTotal - credTotal;
-
-    // Skip empty unassigned bucket noise.
-    if (!c && !b.invoices.length && !b.receipts.length && !b.credits.length) return;
-
-    gInv  += invTotal;
-    gRec  += recTotal;
-    gCred += credTotal;
-
+  // Sales invoices → Receivable column
+  for (const b of (TXN?.invoices || [])) {
+    const r = rec(b);
+    if (!matchesCustomer(r, custKey)) continue;
     rows.push({
-      key,
-      name: c ? (pick(c, ['name', 'nameWithCode']) || 'Unnamed customer')
-              : (key === UNASSIGNED ? 'Unassigned / Unknown' : 'Unknown customer'),
-      code: c ? pick(c, ['code']) : null,
-      email: c ? pick(c, ['email']) : null,
-      currency: c ? refKey(pick(c, ['currency'])) : null,
-      creditLimit: c ? pickNum(c, ['creditLimit']) : null,
-      inactive: c ? !!c.inactive : false,
-      invoices: b.invoices, receipts: b.receipts, credits: b.credits,
-      invTotal, recTotal, credTotal, closing,
+      date: r.issueDate || r.date,
+      reference: r.reference,
+      description: r.description,
+      type: 'inv',
+      receivable: extractAmount(r),
+      received: 0,
     });
+  }
+
+  // Receipts → Received column
+  for (const b of (TXN?.receipts || [])) {
+    const r = rec(b);
+    if (!matchesCustomer(r, custKey)) continue;
+    rows.push({
+      date: r.date || r.issueDate,
+      reference: r.reference,
+      description: r.description,
+      type: 'rec',
+      receivable: 0,
+      received: extractAmount(r),
+    });
+  }
+
+  // Credit notes → Received column (reduces what's owed)
+  for (const b of (TXN?.creditNotes || [])) {
+    const r = rec(b);
+    if (!matchesCustomer(r, custKey)) continue;
+    rows.push({
+      date: r.issueDate || r.date,
+      reference: r.reference,
+      description: r.description,
+      type: 'cn',
+      receivable: 0,
+      received: extractAmount(r),
+    });
+  }
+
+  // Journal entries → debit to customer = Receivable, credit = Received
+  for (const b of (TXN?.journals || [])) {
+    const r = rec(b);
+    const { debit, credit } = journalCustomerSplit(r, custKey);
+    if (debit === 0 && credit === 0) continue;
+    rows.push({
+      date: r.date || r.issueDate,
+      reference: r.reference,
+      description: r.description || r.narration,
+      type: 'je',
+      receivable: debit,
+      received: credit,
+    });
+  }
+
+  // ── Sort ascending by date ──
+  rows.sort((a, b) => {
+    const da = new Date(a.date).getTime() || 0;
+    const db = new Date(b.date).getTime() || 0;
+    return da - db;
   });
 
-  // Largest outstanding balance first.
-  rows.sort((a, b) => b.closing - a.closing);
+  // ── Running balance + totals ──
+  let running = 0, totRecv = 0, totRecd = 0;
+  for (const row of rows) {
+    running += (row.receivable || 0) - (row.received || 0);
+    row.balance = running;
+    totRecv += row.receivable || 0;
+    totRecd += row.received || 0;
+  }
 
-  STATE = {
-    rows,
-    totals: { customers: rows.length, invoiced: gInv, received: gRec, credited: gCred, outstanding: gInv - gRec - gCred },
-  };
-
-  // --- Shell ---
-  app.innerHTML = `
-    <h1>Customer Transactions Report</h1>
-    <p class="subtitle">Customer details, sales invoices, receipts and closing balances — all on one page.</p>
-
-    <div class="summary">
-      <div class="card"><div class="label">Customers</div><div class="value">${STATE.totals.customers.toLocaleString()}</div></div>
-      <div class="card"><div class="label">Total Invoiced</div><div class="value">${fmtMoney(STATE.totals.invoiced)}</div></div>
-      <div class="card"><div class="label">Total Received</div><div class="value pos">${fmtMoney(STATE.totals.received)}</div></div>
-      <div class="card"><div class="label">Total Outstanding</div><div class="value owe">${fmtMoney(STATE.totals.outstanding)}</div></div>
+  // ── Customer header card ──
+  const addr = c.billingAddress || c.defaultBillingAddress || '—';
+  const headerHtml = `
+    <div class="cust-card">
+      <h2>${escapeHtml(c.name || c.nameWithCode || 'Customer')}</h2>
+      <div class="meta">
+        ${c.code ? 'Code: ' + escapeHtml(c.code) : ''}
+        ${c.email ? ' · ' + escapeHtml(c.email) : ''}
+      </div>
+      <div class="addr">${escapeHtml(addr)}</div>
     </div>
-
-    <div class="toolbar">
-      <input class="search" id="search" type="text" placeholder="Search customers by name or code…" oninput="applyFilter(this.value)">
-      <span class="src-note">Closing balance = invoices − receipts − credit notes</span>
+    <div class="summary-row">
+      <div class="stat"><div class="lbl">Total Receivable</div><div class="val">${fmt(totRecv)}</div></div>
+      <div class="stat"><div class="lbl">Total Received</div><div class="val">${fmt(totRecd)}</div></div>
+      <div class="stat"><div class="lbl">Closing Balance</div>
+        <div class="val ${running < 0 ? 'neg' : ''}">${fmt(running)}</div></div>
     </div>
+  `;
 
-    <div id="cust-list"></div>`;
-
-  renderList(STATE.rows);
-}
-
-// Render the customer accordions for a given (possibly filtered) row set.
-function renderList(rows) {
-  const list = document.getElementById('cust-list');
-  if (!rows.length) {
-    list.innerHTML = `<div class="empty-state"><p>No customers match your search.</p></div>`;
+  // ── Empty ledger ──
+  if (rows.length === 0) {
+    area.innerHTML = headerHtml +
+      `<div class="empty-state">No transactions found for this customer.</div>`;
     return;
   }
 
-  list.innerHTML = rows.map((r, i) => {
-    const balClass = Math.abs(r.closing) < 0.005 ? 'bal-zero' : (r.closing > 0 ? 'bal-owe' : 'bal-credit');
-    const balLabel = r.closing < -0.005 ? 'In credit' : (Math.abs(r.closing) < 0.005 ? 'Settled' : 'Owing');
-    const cur = r.currency;
+  // ── Build table rows ──
+  const badgeLabel = { inv:'Invoice', rec:'Receipt', cn:'Credit Note', je:'Journal' };
+  const bodyHtml = rows.map(row => `
+    <tr>
+      <td>${fmtDate(row.date)}</td>
+      <td><span class="badge ${row.type}">${badgeLabel[row.type]}</span>${escapeHtml(row.reference ?? '—')}</td>
+      <td>${escapeHtml(row.description || '—')}</td>
+      <td class="num">${row.receivable ? fmt(row.receivable) : ''}</td>
+      <td class="num">${row.received ? fmt(row.received) : ''}</td>
+      <td class="num ${row.balance < 0 ? 'neg' : ''}">${fmt(row.balance)}</td>
+    </tr>
+  `).join('');
 
-    const invRows = r.invoices.length
-      ? r.invoices
-          .sort((a,b)=> new Date(a.date||0) - new Date(b.date||0))
-          .map(x => `<tr><td>${fmtDate(x.date)}</td><td>${esc(x.ref) || '—'}</td><td class="num">${fmtMoney(x.total, cur)}</td></tr>`).join('')
-      : `<tr><td colspan="3" class="empty-row">No invoices</td></tr>`;
-
-    const recRows = r.receipts.length
-      ? r.receipts
-          .sort((a,b)=> new Date(a.date||0) - new Date(b.date||0))
-          .map(x => `<tr><td>${fmtDate(x.date)}</td><td>${esc(x.ref) || '—'}</td><td class="num">${fmtMoney(x.amount, cur)}</td></tr>`).join('')
-      : `<tr><td colspan="3" class="empty-row">No receipts</td></tr>`;
-
-    const credBlock = r.credits.length ? `
-      <div class="sect-title">Credit Notes</div>
-      <table><thead><tr><th>Date</th><th>Reference</th><th class="num">Amount</th></tr></thead>
-        <tbody>${r.credits.sort((a,b)=> new Date(a.date||0) - new Date(b.date||0))
-          .map(x => `<tr><td>${fmtDate(x.date)}</td><td>${esc(x.ref) || '—'}</td><td class="num">${fmtMoney(x.total, cur)}</td></tr>`).join('')}
-        </tbody></table>` : '';
-
-    return `
-      <div class="cust" id="cust-${i}">
-        <div class="cust-head" onclick="toggleCust(${i})">
-          <span class="chev">▶</span>
-          <div>
-            <span class="cust-name">${esc(r.name)}</span>${r.code ? `<span class="cust-code">${esc(r.code)}</span>` : ''}
-            ${r.inactive ? `<span class="cust-code">· inactive</span>` : ''}
-          </div>
-          <div class="cust-spacer"></div>
-          <div class="cust-meta">
-            ${r.invoices.length} inv · ${r.receipts.length} rec
-          </div>
-          <span class="bal-badge ${balClass}">${balLabel}: ${fmtMoney(r.closing, cur)}</span>
-        </div>
-        <div class="cust-body">
-          <div class="detail-grid">
-            <div><div class="k">Email</div><div class="v">${esc(r.email) || '—'}</div></div>
-            <div><div class="k">Currency</div><div class="v">${esc(cur) || 'Base'}</div></div>
-            <div><div class="k">Credit Limit</div><div class="v">${r.creditLimit != null ? fmtMoney(r.creditLimit, cur) : '—'}</div></div>
-            <div><div class="k">Total Invoiced</div><div class="v">${fmtMoney(r.invTotal, cur)}</div></div>
-            <div><div class="k">Total Received</div><div class="v">${fmtMoney(r.recTotal, cur)}</div></div>
-            <div><div class="k">Credit Notes</div><div class="v">${fmtMoney(r.credTotal, cur)}</div></div>
-          </div>
-
-          <div class="sect-title">Sales Invoices</div>
-          <table>
-            <thead><tr><th>Date</th><th>Reference</th><th class="num">Amount</th></tr></thead>
-            <tbody>${invRows}</tbody>
-          </table>
-
-          <div class="sect-title">Receipts</div>
-          <table>
-            <thead><tr><th>Date</th><th>Reference</th><th class="num">Amount</th></tr></thead>
-            <tbody>${recRows}</tbody>
-          </table>
-
-          ${credBlock}
-
-          <table style="margin-top:14px">
-            <tbody>
-              <tr class="closing-row">
-                <td>Closing Balance</td><td></td>
-                <td class="num">${fmtMoney(r.closing, cur)}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>`;
-  }).join('');
-}
-
-// Basic HTML escaping for any text pulled from the API.
-function esc(v) {
-  if (v === null || v === undefined) return '';
-  return String(v).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
-}
-
-function toggleCust(i) {
-  document.getElementById('cust-' + i)?.classList.toggle('open');
-}
-
-// Case-insensitive filter over name + code.
-function applyFilter(q) {
-  const term = (q || '').trim().toLowerCase();
-  if (!term) { renderList(STATE.rows); return; }
-  const filtered = STATE.rows.filter(r =>
-    (r.name || '').toLowerCase().includes(term) ||
-    (r.code || '').toLowerCase().includes(term));
-  renderList(filtered);
+  area.innerHTML = headerHtml + `
+    <div class="table-wrap">
+      <table class="ledger">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Reference</th>
+            <th>Description</th>
+            <th class="num">Receivable</th>
+            <th class="num">Received</th>
+            <th class="num">Balance</th>
+          </tr>
+        </thead>
+        <tbody>${bodyHtml}</tbody>
+        <tfoot>
+          <tr>
+            <td colspan="3">Totals</td>
+            <td class="num">${fmt(totRecv)}</td>
+            <td class="num">${fmt(totRecd)}</td>
+            <td class="num ${running < 0 ? 'neg' : ''}">${fmt(running)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  `;
 }
 </script>
 </body>
