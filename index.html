@@ -164,15 +164,21 @@ const rec = b => b?.item || b || {};
 const recKey = b => b?.key || b?.item?.key || b?.id || null;
 
 /* Compute a single line's amount from raw inputs when no computed
-   total is present (Manager's batch list omits line.total). */
+   total is present (Manager's batch list omits line.total).
+   Invoices carry value in salesUnitPrice; receipts/credit notes in amount. */
 function computeLineAmount(ln) {
   if (typeof ln?.total === 'number' && ln.total !== 0) return ln.total;
   if (typeof ln?.totalBeforeTax === 'number' && ln.totalBeforeTax !== 0) {
     return ln.totalBeforeTax + (Number(ln?.taxAmount) || 0);
   }
-  // qty defaults to 1 when omitted but a unit price exists
+  // First field that is a real non-zero number (avoids 0 placeholders)
+  const firstNonZero = (...vals) => {
+    for (const v of vals) { const n = Number(v); if (n) return n; }
+    return 0;
+  };
+  // qty defaults to 1 when omitted but a unit price/amount exists
   const qty   = (ln?.qty == null) ? 1 : Number(ln.qty) || 0;
-  const price = Number(ln?.salesUnitPrice ?? ln?.currencyAmount ?? ln?.amount) || 0;
+  const price = firstNonZero(ln?.salesUnitPrice, ln?.currencyAmount, ln?.amount);
   let base = qty * price;
   // Apply discount (fixed amount takes precedence over percentage)
   if (typeof ln?.discountAmount === 'number' && ln.discountAmount) {
