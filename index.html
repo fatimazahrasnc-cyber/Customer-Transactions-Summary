@@ -198,7 +198,8 @@ function extractAmount(r) {
   const candidates = [
     r?.total, r?.totalInBaseCurrency, r?.totalAmountInBaseCurrency,
     r?.amount, r?.balanceDue, r?.invoiceTotal, r?.grandTotal, r?.totalAmount,
-    r?.summaryAmount, r?.amountInBaseCurrency
+    r?.summaryAmount, r?.amountInBaseCurrency,
+    r?.fixedTotalAmount, r?.balancingAmount   // receipts entered as a fixed lump sum
   ];
   for (const c of candidates) {
     if (typeof c === 'number' && !isNaN(c) && c !== 0) return c;
@@ -231,6 +232,27 @@ function matchesCustomer(r, custKey) {
   // Some payloads store the customer string id directly
   if (typeof direct === 'string' && direct === custKey) return true;
   return false;
+}
+
+/* Sum line amounts on a transaction that are tied to the customer.
+   Receipts/payments attach the customer per line via accountsReceivableCustomer.
+   Returns the total of matching lines, or null if no line references any customer
+   (in which case the caller should fall back to header-level matching). */
+function customerLineAmount(r, custKey) {
+  if (!Array.isArray(r?.lines)) return null;
+  let sum = 0, sawLineCustomer = false, matched = false;
+  for (const ln of r.lines) {
+    const lineCust =
+      ln?.accountsReceivableCustomer || ln?.billableExpenseCustomer || ln?.customer;
+    const key = lineCust?.key || lineCust?.id || lineCust;
+    if (key) sawLineCustomer = true;
+    if (key && key === custKey) {
+      sum += computeLineAmount(ln);
+      matched = true;
+    }
+  }
+  if (!sawLineCustomer) return null;     // no per-line customer info → use header logic
+  return matched ? sum : 0;
 }
 
 /* For journal entries: scan lines for ones tied to the customer,
@@ -396,31 +418,48 @@ function onSelectCustomer(idx) {
     });
   }
 
-  // Receipts → Received column
+  // Receipts → Received column. Customer is attached per line
+  // (accountsReceivableCustomer); fall back to header customer.
   for (const b of (TXN?.receipts || [])) {
     const r = rec(b);
-    if (!matchesCustomer(r, custKey)) continue;
+    const lineAmt = customerLineAmount(r, custKey);
+    let amount;
+    if (lineAmt === null) {
+      if (!matchesCustomer(r, custKey)) continue;   // header-only matching
+      amount = extractAmount(r);
+    } else {
+      if (lineAmt === 0) continue;                   // receipt not for this customer
+      amount = lineAmt;
+    }
     rows.push({
       date: r.date || r.issueDate,
       reference: r.reference,
       description: r.description,
       type: 'rec',
       receivable: 0,
-      received: extractAmount(r),
+      received: amount,
     });
   }
 
   // Credit notes → Received column (reduces what's owed)
   for (const b of (TXN?.creditNotes || [])) {
     const r = rec(b);
-    if (!matchesCustomer(r, custKey)) continue;
+    const lineAmt = customerLineAmount(r, custKey);
+    let amount;
+    if (lineAmt === null) {
+      if (!matchesCustomer(r, custKey)) continue;
+      amount = extractAmount(r);
+    } else {
+      if (lineAmt === 0) continue;
+      amount = lineAmt;
+    }
     rows.push({
       date: r.issueDate || r.date,
       reference: r.reference,
       description: r.description,
       type: 'cn',
       receivable: 0,
-      received: extractAmount(r),
+      received: amount,
     });
   }
 
